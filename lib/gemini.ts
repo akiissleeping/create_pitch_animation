@@ -1,8 +1,9 @@
-const GEMINI_TEXT_ENDPOINT =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
-const GEMINI_IMAGE_ENDPOINT =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-image-generation:generateContent";
+// Text generation: gemini-2.5-flash (stable, free tier available)
+const TEXT_MODEL = "gemini-2.5-flash";
+// Image generation: gemini-2.5-flash-image (stable image model)
+const IMAGE_MODEL = "gemini-2.5-flash-image";
 
 function getApiKey(): string {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -13,6 +14,47 @@ function getApiKey(): string {
 }
 
 /**
+ * Retry wrapper for Gemini API calls with exponential backoff on 429 errors
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries = 3
+): Promise<Response> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const response = await fetch(url, options);
+
+    if (response.status === 429 && attempt < maxRetries) {
+      // Parse retry delay from response, default to exponential backoff
+      let waitMs = Math.min(1000 * Math.pow(2, attempt + 1), 30000);
+      try {
+        const errData = await response.json();
+        const retryInfo = errData.error?.details?.find(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (d: any) => d["@type"]?.includes("RetryInfo")
+        );
+        if (retryInfo?.retryDelay) {
+          const seconds = parseFloat(retryInfo.retryDelay);
+          if (!isNaN(seconds)) {
+            waitMs = Math.ceil(seconds * 1000) + 500;
+          }
+        }
+      } catch {
+        // ignore parse errors
+      }
+
+      console.log(`Rate limited. Retrying in ${waitMs}ms (attempt ${attempt + 1}/${maxRetries})...`);
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      continue;
+    }
+
+    return response;
+  }
+
+  throw new Error("Gemini API: リトライ回数の上限に達しました。しばらく待ってから再試行してください。");
+}
+
+/**
  * Gemini APIでテキスト生成（プロンプト生成・ファイル分析用）
  */
 export async function generateText(
@@ -20,8 +62,9 @@ export async function generateText(
   userMessage: string
 ): Promise<string> {
   const apiKey = getApiKey();
+  const url = `${GEMINI_BASE}/${TEXT_MODEL}:generateContent?key=${apiKey}`;
 
-  const response = await fetch(`${GEMINI_TEXT_ENDPOINT}?key=${apiKey}`, {
+  const response = await fetchWithRetry(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -59,8 +102,9 @@ export async function generateText(
  */
 export async function generateAnimeImage(prompt: string): Promise<string> {
   const apiKey = getApiKey();
+  const url = `${GEMINI_BASE}/${IMAGE_MODEL}:generateContent?key=${apiKey}`;
 
-  const response = await fetch(`${GEMINI_IMAGE_ENDPOINT}?key=${apiKey}`, {
+  const response = await fetchWithRetry(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
