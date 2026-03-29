@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import { extractTextFromFile } from "@/lib/extract-client";
 
 interface FileUploadProps {
   onAnalyzed: (topics: { topic: string; content: string }[]) => void;
@@ -10,6 +11,7 @@ interface FileUploadProps {
 export default function FileUpload({ onAnalyzed, disabled }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [status, setStatus] = useState<string>("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -22,8 +24,8 @@ export default function FileUpload({ onAnalyzed, disabled }: FileUploadProps) {
         return;
       }
 
-      if (file.size > 50 * 1024 * 1024) {
-        setError("ファイルサイズは50MB以下にしてください。");
+      if (file.size > 100 * 1024 * 1024) {
+        setError("ファイルサイズは100MB以下にしてください。");
         return;
       }
 
@@ -32,22 +34,35 @@ export default function FileUpload({ onAnalyzed, disabled }: FileUploadProps) {
       setIsAnalyzing(true);
 
       try {
-        const formData = new FormData();
-        formData.append("file", file);
+        // Step 1: Extract text client-side (no upload needed)
+        setStatus("テキストを抽出中...");
+        const text = await extractTextFromFile(file);
 
-        const res = await fetch("/api/analyze-file", {
+        if (!text.trim()) {
+          throw new Error(
+            "ファイルからテキストを抽出できませんでした。画像のみのPDFには対応していません。"
+          );
+        }
+
+        // Step 2: Send only the text to the API for Claude analysis
+        setStatus("AIでトピックを分析中...");
+        const res = await fetch("/api/analyze-text", {
           method: "POST",
-          body: formData,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: text,
+            fileName: file.name,
+          }),
         });
 
         if (!res.ok) {
-          const text = await res.text();
+          const respText = await res.text();
           let errMsg = "ファイル分析に失敗しました";
           try {
-            const errJson = JSON.parse(text);
+            const errJson = JSON.parse(respText);
             errMsg = errJson.error || errMsg;
           } catch {
-            errMsg = text || errMsg;
+            errMsg = respText || errMsg;
           }
           throw new Error(errMsg);
         }
@@ -59,6 +74,7 @@ export default function FileUpload({ onAnalyzed, disabled }: FileUploadProps) {
         setError(msg);
       } finally {
         setIsAnalyzing(false);
+        setStatus("");
       }
     },
     [onAnalyzed]
@@ -122,9 +138,9 @@ export default function FileUpload({ onAnalyzed, disabled }: FileUploadProps) {
               <div className="w-10 h-10 rounded-full border-2 border-neon-blue/30 border-t-neon-blue animate-spin" />
             </div>
             <div>
-              <p className="text-sm text-neon-blue font-medium">AI分析中...</p>
+              <p className="text-sm text-neon-blue font-medium">{status || "分析中..."}</p>
               <p className="text-xs text-white/40 mt-1">
-                {fileName} からトピックを抽出しています
+                {fileName} を処理しています
               </p>
             </div>
           </div>
