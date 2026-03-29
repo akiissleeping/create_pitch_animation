@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { execFile } from "child_process";
-import { writeFile, readFile, unlink, mkdtemp } from "fs/promises";
-import { join } from "path";
-import { tmpdir } from "os";
+import { createPptxBuffer } from "@/lib/pptx";
 import type { GeneratePptxRequest } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
-  let tempDir = "";
   try {
     const body: GeneratePptxRequest = await request.json();
 
@@ -17,53 +13,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    tempDir = await mkdtemp(join(tmpdir(), "anime-pptx-"));
-    const outputPath = join(tempDir, "presentation.pptx");
+    const pptxBuffer = await createPptxBuffer(body.slides);
 
-    // Save images to temp files and build slide data for Python
-    const slideInfos = [];
-    for (let i = 0; i < body.slides.length; i++) {
-      const slide = body.slides[i];
-      const imgPath = join(tempDir, `slide_${i}.png`);
-      const imgBuffer = Buffer.from(slide.imageBase64, "base64");
-      await writeFile(imgPath, imgBuffer);
-      slideInfos.push({
-        image_path: imgPath,
-        topic: slide.topic,
-        show_title: slide.showTitle,
-      });
-    }
-
-    const jsonData = JSON.stringify({
-      slides: slideInfos,
-      output_path: outputPath,
-    });
-
-    const jsonPath = join(tempDir, "input.json");
-    await writeFile(jsonPath, jsonData, "utf-8");
-
-    const scriptPath = join(process.cwd(), "scripts", "create_pptx.py");
-
-    await new Promise<void>((resolve, reject) => {
-      execFile("python", [scriptPath, jsonPath], { timeout: 30000 }, (error, stdout, stderr) => {
-        if (error) {
-          reject(new Error(`PPTX生成エラー: ${stderr || error.message}`));
-        } else {
-          resolve();
-        }
-      });
-    });
-
-    const pptxBuffer = await readFile(outputPath);
-
-    // Cleanup temp files
-    const cleanups = [unlink(jsonPath), unlink(outputPath)];
-    for (let i = 0; i < body.slides.length; i++) {
-      cleanups.push(unlink(join(tempDir, `slide_${i}.png`)));
-    }
-    await Promise.allSettled(cleanups);
-
-    return new NextResponse(pptxBuffer, {
+    return new NextResponse(new Uint8Array(pptxBuffer), {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
