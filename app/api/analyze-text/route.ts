@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { generateText } from "@/lib/gemini";
 import type { AnalyzeFileResponse } from "@/lib/types";
 
-const CLAUDE_SYSTEM_PROMPT = `あなたはプレゼンテーション資料を分析する専門家です。
+const SYSTEM_PROMPT = `あなたはプレゼンテーション資料を分析する専門家です。
 アップロードされた資料（PDFまたはPPTX）のテキスト内容を受け取り、
 プレゼンテーションの重要なトピックを洗い出し、各トピックの概要をまとめてください。
 
@@ -35,55 +36,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey || apiKey === "your_anthropic_api_key") {
-      return NextResponse.json(
-        { error: "ANTHROPIC_API_KEY が設定されていません。" },
-        { status: 500 }
-      );
-    }
-
     // Truncate if too long
     const truncatedText =
       text.length > 30000 ? text.slice(0, 30000) + "\n\n...(以下省略)" : text;
 
-    const claudeResponse = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 4096,
-        system: CLAUDE_SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: `以下の資料の内容を分析して、重要なトピックを洗い出してください。\n\nファイル名: ${fileName || "unknown"}\n\n${truncatedText}`,
-          },
-        ],
-      }),
-    });
+    const userMessage = `以下の資料の内容を分析して、重要なトピックを洗い出してください。\n\nファイル名: ${fileName || "unknown"}\n\n${truncatedText}`;
 
-    if (!claudeResponse.ok) {
-      const errorData = await claudeResponse.text();
-      throw new Error(`Claude API エラー: ${claudeResponse.status} - ${errorData}`);
-    }
-
-    const claudeText = await claudeResponse.text();
-    let claudeData;
-    try {
-      claudeData = JSON.parse(claudeText);
-    } catch {
-      throw new Error(`Claude API のレスポンス解析に失敗しました`);
-    }
-
-    const responseText = claudeData.content?.[0]?.text;
-    if (!responseText) {
-      throw new Error("Claude API から応答を取得できませんでした。");
-    }
+    const responseText = await generateText(SYSTEM_PROMPT, userMessage);
 
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {

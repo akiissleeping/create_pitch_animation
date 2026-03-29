@@ -281,7 +281,7 @@ export default function Home() {
           </div>
           <div className="hidden sm:flex items-center gap-2 text-xs text-white/30">
             <div className="w-2 h-2 rounded-full bg-green-500/50" />
-            Powered by Claude + Gemini
+            Powered by Gemini AI
           </div>
         </div>
       </header>
