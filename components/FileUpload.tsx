@@ -41,8 +41,15 @@ export default function FileUpload({ onAnalyzed, disabled }: FileUploadProps) {
         });
 
         if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || "ファイル分析に失敗しました");
+          const text = await res.text();
+          let errMsg = "ファイル分析に失敗しました";
+          try {
+            const errJson = JSON.parse(text);
+            errMsg = errJson.error || errMsg;
+          } catch {
+            errMsg = text || errMsg;
+          }
+          throw new Error(errMsg);
         }
 
         const data = await res.json();

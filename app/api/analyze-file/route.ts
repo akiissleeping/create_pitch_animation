@@ -97,7 +97,13 @@ export async function POST(request: NextRequest) {
       throw new Error(`Claude API エラー: ${claudeResponse.status} - ${errorData}`);
     }
 
-    const claudeData = await claudeResponse.json();
+    const claudeText = await claudeResponse.text();
+    let claudeData;
+    try {
+      claudeData = JSON.parse(claudeText);
+    } catch {
+      throw new Error(`Claude API のレスポンス解析に失敗しました: ${claudeText.slice(0, 200)}`);
+    }
     const responseText = claudeData.content?.[0]?.text;
 
     if (!responseText) {

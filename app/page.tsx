@@ -7,6 +7,15 @@ import GenerateButton from "@/components/GenerateButton";
 import FileUpload from "@/components/FileUpload";
 import type { SlideData, AnimeStyle } from "@/lib/types";
 
+async function safeJsonParse(res: Response, fallbackMsg: string) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(text || fallbackMsg);
+  }
+}
+
 function createSlide(): SlideData {
   return {
     id: crypto.randomUUID(),
@@ -95,11 +104,11 @@ export default function Home() {
     });
 
     if (!promptRes.ok) {
-      const err = await promptRes.json();
+      const err = await safeJsonParse(promptRes, "プロンプト生成に失敗しました");
       throw new Error(err.error || "プロンプト生成に失敗しました");
     }
 
-    const { prompt } = await promptRes.json();
+    const { prompt } = await safeJsonParse(promptRes, "プロンプト生成に失敗しました");
 
     // Step 2: Generate image
     setSlides((prev) =>
@@ -117,11 +126,11 @@ export default function Home() {
     });
 
     if (!imageRes.ok) {
-      const err = await imageRes.json();
+      const err = await safeJsonParse(imageRes, "画像生成に失敗しました");
       throw new Error(err.error || "画像生成に失敗しました");
     }
 
-    const { imageBase64 } = await imageRes.json();
+    const { imageBase64 } = await safeJsonParse(imageRes, "画像生成に失敗しました");
 
     const updated: SlideData = {
       ...slide,
@@ -215,8 +224,19 @@ export default function Home() {
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "PPTX生成に失敗しました");
+        const text = await res.text();
+        let errMsg = "PPTX生成に失敗しました";
+        try {
+          const errJson = JSON.parse(text);
+          errMsg = errJson.error || errMsg;
+        } catch {
+          if (text.includes("Entity Too Large") || text.includes("too large")) {
+            errMsg = "データが大きすぎます。スライド数を減らしてください。";
+          } else {
+            errMsg = text || errMsg;
+          }
+        }
+        throw new Error(errMsg);
       }
 
       const blob = await res.blob();
