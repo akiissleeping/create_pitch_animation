@@ -13,14 +13,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const prompt = await generateImagePrompt(
+    const { prompt, bulletPoints } = await generateImagePrompt(
       body.topic,
       body.content,
       body.style,
       body.customStyle
     );
 
-    const response: GeneratePromptResponse = { prompt };
+    const response: GeneratePromptResponse = { prompt, bulletPoints };
     return NextResponse.json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : "プロンプト生成中にエラーが発生しました。";

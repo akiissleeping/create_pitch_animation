@@ -108,13 +108,13 @@ export default function Home() {
       throw new Error(err.error || "プロンプト生成に失敗しました");
     }
 
-    const { prompt } = await safeJsonParse(promptRes, "プロンプト生成に失敗しました");
+    const { prompt, bulletPoints } = await safeJsonParse(promptRes, "プロンプト生成に失敗しました");
 
     // Step 2: Generate image
     setSlides((prev) =>
       prev.map((s) =>
         s.id === slide.id
-          ? { ...s, generatedPrompt: prompt, status: "generating-image" }
+          ? { ...s, generatedPrompt: prompt, bulletPoints, status: "generating-image" }
           : s
       )
     );
@@ -135,6 +135,7 @@ export default function Home() {
     const updated: SlideData = {
       ...slide,
       generatedPrompt: prompt,
+      bulletPoints,
       imageBase64,
       status: "done",
       error: undefined,
@@ -216,6 +217,7 @@ export default function Home() {
       await downloadPptx(
         doneSlides.map((s) => ({
           topic: s.topic,
+          bulletPoints: s.bulletPoints || [],
           imageBase64: s.imageBase64!,
           showTitle: true,
         }))

@@ -6,6 +6,7 @@
 
 interface SlideInput {
   topic: string;
+  bulletPoints: string[];
   imageBase64: string;
   showTitle: boolean;
 }
@@ -87,40 +88,95 @@ function presentationRelsXml(slideCount: number): string {
 </Relationships>`;
 }
 
-function slideXml(slideIndex: number, topic: string, showTitle: boolean): string {
-  const titleXml = showTitle && topic ? `
+function slideXml(slideIndex: number, topic: string, bulletPoints: string[], showTitle: boolean): string {
+  // ── Header: Topic title at the top with semi-transparent dark background ──
+  const headerXml = showTitle && topic ? `
     <p:sp>
       <p:nvSpPr>
-        <p:cNvPr id="3" name="TextBox"/>
-        <p:cNvSpPr txBox="1"/>
+        <p:cNvPr id="3" name="HeaderBg"/>
+        <p:cNvSpPr/>
         <p:nvPr/>
       </p:nvSpPr>
       <p:spPr>
         <a:xfrm>
-          <a:off x="0" y="5486400"/>
-          <a:ext cx="${SLIDE_WIDTH}" cy="1371600"/>
+          <a:off x="0" y="0"/>
+          <a:ext cx="${SLIDE_WIDTH}" cy="1143000"/>
         </a:xfrm>
         <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-        <a:solidFill><a:srgbClr val="000000"><a:alpha val="50000"/></a:srgbClr></a:solidFill>
+        <a:solidFill><a:srgbClr val="000000"><a:alpha val="60000"/></a:srgbClr></a:solidFill>
+        <a:ln><a:noFill/></a:ln>
       </p:spPr>
       <p:txBody>
-        <a:bodyPr anchor="ctr" anchorCtr="0">
-          <a:normAutofit/>
-        </a:bodyPr>
+        <a:bodyPr anchor="ctr" anchorCtr="0"/>
         <a:lstStyle/>
         <a:p>
-          <a:pPr algn="l"/>
+          <a:pPr algn="l">
+            <a:lnSpc><a:spcPct val="100000"/></a:lnSpc>
+          </a:pPr>
           <a:r>
-            <a:rPr lang="ja-JP" sz="3200" b="1" dirty="0">
+            <a:rPr lang="ja-JP" sz="3600" b="1" dirty="0">
               <a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill>
               <a:latin typeface="Noto Sans JP"/>
               <a:ea typeface="Noto Sans JP"/>
             </a:rPr>
-            <a:t>${escapeXml(topic)}</a:t>
+            <a:t>  ${escapeXml(topic)}</a:t>
           </a:r>
         </a:p>
       </p:txBody>
     </p:sp>` : "";
+
+  // ── Bullet points: Bottom-right area with semi-transparent background ──
+  let bulletsXml = "";
+  if (bulletPoints.length > 0) {
+    const bulletParagraphs = bulletPoints
+      .map(
+        (bp) => `
+        <a:p>
+          <a:pPr marL="228600" indent="-228600" algn="l">
+            <a:lnSpc><a:spcPct val="150000"/></a:lnSpc>
+            <a:buFont typeface="Arial"/>
+            <a:buChar char="●"/>
+          </a:pPr>
+          <a:r>
+            <a:rPr lang="ja-JP" sz="2000" dirty="0">
+              <a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill>
+              <a:latin typeface="Noto Sans JP"/>
+              <a:ea typeface="Noto Sans JP"/>
+            </a:rPr>
+            <a:t>${escapeXml(bp)}</a:t>
+          </a:r>
+        </a:p>`
+      )
+      .join("");
+
+    // Background box for bullets (bottom-right, semi-transparent)
+    bulletsXml = `
+    <p:sp>
+      <p:nvSpPr>
+        <p:cNvPr id="4" name="BulletBg"/>
+        <p:cNvSpPr/>
+        <p:nvPr/>
+      </p:nvSpPr>
+      <p:spPr>
+        <a:xfrm>
+          <a:off x="5943600" y="3657600"/>
+          <a:ext cx="5943600" cy="3048000"/>
+        </a:xfrm>
+        <a:prstGeom prst="roundRect">
+          <a:avLst><a:gd name="adj" fmla="val 5000"/></a:avLst>
+        </a:prstGeom>
+        <a:solidFill><a:srgbClr val="1A1A2E"><a:alpha val="75000"/></a:srgbClr></a:solidFill>
+        <a:ln><a:noFill/></a:ln>
+      </p:spPr>
+      <p:txBody>
+        <a:bodyPr anchor="ctr" anchorCtr="0" lIns="274320" rIns="274320" tIns="182880" bIns="182880">
+          <a:normAutofit/>
+        </a:bodyPr>
+        <a:lstStyle/>
+        ${bulletParagraphs}
+      </p:txBody>
+    </p:sp>`;
+  }
 
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -159,7 +215,8 @@ function slideXml(slideIndex: number, topic: string, showTitle: boolean): string
           <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
         </p:spPr>
       </p:pic>
-      ${titleXml}
+      ${headerXml}
+      ${bulletsXml}
     </p:spTree>
   </p:cSld>
 </p:sld>`;
@@ -187,7 +244,10 @@ export async function downloadPptx(slides: SlideInput[]): Promise<void> {
   // Slides
   for (let i = 0; i < slides.length; i++) {
     const idx = i + 1;
-    zip.file(`ppt/slides/slide${idx}.xml`, slideXml(idx, slides[i].topic, slides[i].showTitle));
+    zip.file(
+      `ppt/slides/slide${idx}.xml`,
+      slideXml(idx, slides[i].topic, slides[i].bulletPoints, slides[i].showTitle)
+    );
     zip.file(`ppt/slides/_rels/slide${idx}.xml.rels`, slideRelsXml(idx));
     zip.file(`ppt/media/image${idx}.png`, base64ToUint8Array(slides[i].imageBase64));
   }

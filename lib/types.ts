@@ -31,6 +31,7 @@ export interface SlideData {
   style: AnimeStyle;
   customStyle: string;
   generatedPrompt?: string;
+  bulletPoints?: string[];
   imageBase64?: string;
   status: "idle" | "generating-prompt" | "generating-image" | "done" | "error";
   error?: string;
@@ -45,6 +46,7 @@ export interface GeneratePromptRequest {
 
 export interface GeneratePromptResponse {
   prompt: string;
+  bulletPoints: string[];
 }
 
 export interface GenerateImageRequest {
