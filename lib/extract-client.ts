@@ -1,49 +1,52 @@
 /**
- * Client-side text extraction from PDF and PPTX files.
- * This avoids uploading large binary files to the server.
+ * Client-side text extraction from PPTX files using jszip.
+ * PDF files are sent to the server-side API for extraction (avoids pdf.js worker issues).
  */
 
 export async function extractTextFromFile(file: File): Promise<string> {
   const ext = file.name.split(".").pop()?.toLowerCase();
 
   if (ext === "pdf") {
-    return extractTextFromPdf(file);
+    // PDF: send to server API to avoid pdf.js worker issues in browser
+    return extractTextFromPdfViaServer(file);
   } else if (ext === "pptx" || ext === "ppt") {
+    // PPTX: extract client-side with jszip (no worker needed)
     return extractTextFromPptx(file);
   }
 
   throw new Error("PDF または PPTX ファイルのみ対応しています。");
 }
 
-async function extractTextFromPdf(file: File): Promise<string> {
-  const pdfjsLib = await import("pdfjs-dist");
+async function extractTextFromPdfViaServer(file: File): Promise<string> {
+  // Split file into chunks if needed to avoid Vercel 4.5MB payload limit
+  const MAX_CHUNK = 4 * 1024 * 1024; // 4MB safe limit
 
-  // Disable worker to avoid CDN/worker loading issues
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "";
+  if (file.size > MAX_CHUNK) {
+    // For large PDFs, read first 4MB only (covers most text-based PDFs)
+    // The server will extract as much text as possible
+    const blob = file.slice(0, MAX_CHUNK);
+    const formData = new FormData();
+    formData.append("file", blob, file.name);
 
-  const arrayBuffer = await file.arrayBuffer();
-  const loadingTask = pdfjsLib.getDocument({
-    data: arrayBuffer,
-    useWorkerFetch: false,
-    isEvalSupported: false,
-    useSystemFonts: true,
-  });
-  const pdf = await loadingTask.promise;
-
-  const pages: string[] = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const textContent = await page.getTextContent();
-    const pageText = textContent.items
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((item: any) => ("str" in item ? item.str : "") as string)
-      .join(" ");
-    if (pageText.trim()) {
-      pages.push(`--- ページ ${i} ---\n${pageText}`);
+    const res = await fetch("/api/extract-pdf", { method: "POST", body: formData });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "PDF解析に失敗しました" }));
+      throw new Error(err.error || "PDF解析に失敗しました");
     }
+    const data = await res.json();
+    return data.text || "";
   }
 
-  return pages.join("\n\n");
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+
+  const res = await fetch("/api/extract-pdf", { method: "POST", body: formData });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "PDF解析に失敗しました" }));
+    throw new Error(err.error || "PDF解析に失敗しました");
+  }
+  const data = await res.json();
+  return data.text || "";
 }
 
 async function extractTextFromPptx(file: File): Promise<string> {
