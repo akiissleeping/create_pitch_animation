@@ -5,34 +5,6 @@ interface PageContent {
   text: string;
 }
 
-async function loadPdfParse(): Promise<(buf: Buffer) => Promise<{ text: string }>> {
-  // Avoid static analysis picking this up at build time
-  const moduleName = ["pdf", "parse"].join("-");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require(moduleName);
-}
-
-export async function extractFromPdf(buffer: Buffer): Promise<PageContent[]> {
-  const pdf = await loadPdfParse();
-  const data = await pdf(buffer);
-
-  const pages: PageContent[] = [];
-  const rawPages = data.text.split(/\f/);
-
-  for (let i = 0; i < rawPages.length; i++) {
-    const text = rawPages[i].trim();
-    if (text) {
-      pages.push({ page: i + 1, text });
-    }
-  }
-
-  if (pages.length === 0 && data.text.trim()) {
-    pages.push({ page: 1, text: data.text.trim() });
-  }
-
-  return pages;
-}
-
 export async function extractFromPptx(buffer: Buffer): Promise<PageContent[]> {
   const zip = await JSZip.loadAsync(buffer);
   const pages: PageContent[] = [];
@@ -73,11 +45,9 @@ export async function extractContent(
 ): Promise<PageContent[]> {
   const ext = filename.split(".").pop()?.toLowerCase();
 
-  if (ext === "pdf") {
-    return extractFromPdf(buffer);
-  } else if (ext === "pptx" || ext === "ppt") {
+  if (ext === "pptx" || ext === "ppt") {
     return extractFromPptx(buffer);
   }
 
-  throw new Error(`サポートされていないファイル形式: ${ext}`);
+  throw new Error(`サポートされていないファイル形式: ${ext}。PPTXのみサーバーサイドで対応しています。`);
 }

@@ -1,52 +1,41 @@
 /**
- * Client-side text extraction from PPTX files using jszip.
- * PDF files are sent to the server-side API for extraction (avoids pdf.js worker issues).
+ * Client-side text extraction from PDF and PPTX files.
+ * Uses pdfjs-dist v3 (no worker required) and jszip.
  */
 
 export async function extractTextFromFile(file: File): Promise<string> {
   const ext = file.name.split(".").pop()?.toLowerCase();
 
   if (ext === "pdf") {
-    // PDF: send to server API to avoid pdf.js worker issues in browser
-    return extractTextFromPdfViaServer(file);
+    return extractTextFromPdf(file);
   } else if (ext === "pptx" || ext === "ppt") {
-    // PPTX: extract client-side with jszip (no worker needed)
     return extractTextFromPptx(file);
   }
 
   throw new Error("PDF または PPTX ファイルのみ対応しています。");
 }
 
-async function extractTextFromPdfViaServer(file: File): Promise<string> {
-  // Split file into chunks if needed to avoid Vercel 4.5MB payload limit
-  const MAX_CHUNK = 4 * 1024 * 1024; // 4MB safe limit
+async function extractTextFromPdf(file: File): Promise<string> {
+  // pdfjs-dist v3 - import the legacy build which doesn't need a worker
+  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.js");
 
-  if (file.size > MAX_CHUNK) {
-    // For large PDFs, read first 4MB only (covers most text-based PDFs)
-    // The server will extract as much text as possible
-    const blob = file.slice(0, MAX_CHUNK);
-    const formData = new FormData();
-    formData.append("file", blob, file.name);
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
 
-    const res = await fetch("/api/extract-pdf", { method: "POST", body: formData });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: "PDF解析に失敗しました" }));
-      throw new Error(err.error || "PDF解析に失敗しました");
+  const pages: string[] = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((item: any) => ("str" in item ? item.str : ""))
+      .join(" ");
+    if (pageText.trim()) {
+      pages.push(`--- ページ ${i} ---\n${pageText}`);
     }
-    const data = await res.json();
-    return data.text || "";
   }
 
-  const formData = new FormData();
-  formData.append("file", file, file.name);
-
-  const res = await fetch("/api/extract-pdf", { method: "POST", body: formData });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "PDF解析に失敗しました" }));
-    throw new Error(err.error || "PDF解析に失敗しました");
-  }
-  const data = await res.json();
-  return data.text || "";
+  return pages.join("\n\n");
 }
 
 async function extractTextFromPptx(file: File): Promise<string> {
@@ -58,13 +47,11 @@ async function extractTextFromPptx(file: File): Promise<string> {
   const pages: string[] = [];
   let slideIndex = 1;
 
-  // PPTX files contain slides in ppt/slides/slide{n}.xml
   while (true) {
     const slideFile = zip.file(`ppt/slides/slide${slideIndex}.xml`);
     if (!slideFile) break;
 
     const xml = await slideFile.async("text");
-    // Extract text from XML by removing all tags
     const text = xml
       .replace(/<a:t>/g, "|||TEXT_START|||")
       .replace(/<\/a:t>/g, "|||TEXT_END|||")
