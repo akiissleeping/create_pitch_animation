@@ -1,6 +1,6 @@
 /**
  * Client-side text extraction from PDF and PPTX files.
- * Uses pdfjs-dist v3 (no worker required) and jszip.
+ * Uses unpdf (no worker) for PDF and jszip for PPTX.
  */
 
 export async function extractTextFromFile(file: File): Promise<string> {
@@ -16,22 +16,20 @@ export async function extractTextFromFile(file: File): Promise<string> {
 }
 
 async function extractTextFromPdf(file: File): Promise<string> {
-  // pdfjs-dist v3 - import the legacy build which doesn't need a worker
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.js");
+  const { extractText } = await import("unpdf");
 
   const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+  const result = await extractText(new Uint8Array(arrayBuffer), { mergePages: false });
 
   const pages: string[] = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const textContent = await page.getTextContent();
-    const pageText = textContent.items
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((item: any) => ("str" in item ? item.str : ""))
-      .join(" ");
-    if (pageText.trim()) {
-      pages.push(`--- ページ ${i} ---\n${pageText}`);
+  // result.text is string[] when mergePages is false
+  const textArray = result.text;
+  if (Array.isArray(textArray)) {
+    for (let i = 0; i < textArray.length; i++) {
+      const pageText = textArray[i]?.trim();
+      if (pageText) {
+        pages.push(`--- ページ ${i + 1} ---\n${pageText}`);
+      }
     }
   }
 
