@@ -211,43 +211,15 @@ export default function Home() {
     }
 
     try {
-      const res = await fetch("/api/generate-pptx", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          slides: doneSlides.map((s) => ({
-            topic: s.topic,
-            imageBase64: s.imageBase64,
-            showTitle: true,
-          })),
-        }),
-      });
-
-      if (!res.ok) {
-        const text = await res.text();
-        let errMsg = "PPTX生成に失敗しました";
-        try {
-          const errJson = JSON.parse(text);
-          errMsg = errJson.error || errMsg;
-        } catch {
-          if (text.includes("Entity Too Large") || text.includes("too large")) {
-            errMsg = "データが大きすぎます。スライド数を減らしてください。";
-          } else {
-            errMsg = text || errMsg;
-          }
-        }
-        throw new Error(errMsg);
-      }
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "anime_presentation.pptx";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // Generate PPTX client-side to avoid Vercel payload limits
+      const { downloadPptx } = await import("@/lib/pptx-client");
+      await downloadPptx(
+        doneSlides.map((s) => ({
+          topic: s.topic,
+          imageBase64: s.imageBase64!,
+          showTitle: true,
+        }))
+      );
     } catch (error) {
       const msg = error instanceof Error ? error.message : "PPTX生成に失敗しました";
       showToast(msg);
