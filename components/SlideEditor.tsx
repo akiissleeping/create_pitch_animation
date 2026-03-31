@@ -88,7 +88,7 @@ export default function SlideEditor({
 
       {/* Style */}
       <div className="mb-3">
-        <label className="block text-xs text-white/50 mb-1.5">アニメスタイル</label>
+        <label className="block text-xs text-white/50 mb-1.5">イラストスタイル</label>
         <select
           value={slide.style}
           onChange={(e) => onUpdate(slide.id, { style: e.target.value as AnimeStyle })}

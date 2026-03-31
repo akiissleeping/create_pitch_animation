@@ -21,7 +21,7 @@ function createSlide(): SlideData {
     id: crypto.randomUUID(),
     topic: "",
     content: "",
-    style: "ghibli",
+    style: "graphic-recording",
     customStyle: "",
     status: "idle",
   };
@@ -36,7 +36,7 @@ export default function Home() {
     phase: string;
   } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [defaultStyle, setDefaultStyle] = useState<AnimeStyle>("ghibli");
+  const [defaultStyle, setDefaultStyle] = useState<AnimeStyle>("graphic-recording");
 
   const handleFileAnalyzed = useCallback(
     (topics: { topic: string; content: string }[]) => {
